@@ -3,41 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>シーケンス制御シミュレーター（検定盤＋ラダー通電）</title>
+<title>シーケンス制御シミュレーター（横並び・通電強調）</title>
 <style>
-  :root{--hot:#ffd84d;--wire:#6b7280;--part:#111827;--bg:#f8fafc;--ok:#22c55e;--danger:#ef4444;}
-  *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#0f172a;background:var(--bg)}
-  header{padding:10px 16px;background:#0ea5e9;color:#fff;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:16px;margin:0;font-weight:700}
-  .mode{margin-left:auto;display:flex;gap:8px}
-  .mode button{border:0;border-radius:999px;padding:8px 12px;background:#0284c7;color:#fff;cursor:pointer}
-  .mode button.active{background:#22c55e}
-  main{display:grid;grid-template-columns: minmax(360px,1fr) minmax(320px,420px);gap:16px;padding:16px}
-  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.04)}
-  .card h2{margin:0;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:15px}
-  .pane{padding:10px}
-  /* Ladder */
-  svg{width:100%;height:520px;background:#ffffff;border-radius:12px}
-  .bus{stroke:#111827;stroke-width:4}
-  .wire{stroke:var(--wire);stroke-width:3;fill:none}
-  .hot{stroke:var(--hot)!important}
-  .label{font: 12px monospace; fill:#111827}
-  .contact rect{fill:#fff;stroke:var(--part);stroke-width:2}
-  .contact line{stroke:var(--part);stroke-width:2}
-  .coil circle{fill:#fff;stroke:var(--part);stroke-width:2}
-  .aux{font: 11px monospace; fill:#374151}
-  /* Panel (検定盤風) */
-  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;place-items:center}
-  .pb{width:88px;height:88px;border-radius:14px;border:2px solid #cbd5e1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;user-select:none;background:#f1f5f9}
-  .pb:active{transform:translateY(1px)}
-  .pb .cap{width:42px;height:42px;border-radius:50%}
-  .pb.start .cap{background:#10b981}
-  .pb.stop .cap{background:#ef4444}
-  .lamp{grid-column: span 3; width:140px;height:140px;border-radius:50%;border:8px solid #334155;background:#0f172a;position:relative;box-shadow:inset 0 0 20px rgba(0,0,0,.6)}
-  .lamp.on{background:#facc15; box-shadow:0 0 28px #facc15,inset 0 0 16px rgba(0,0,0,.5)}
-  .legend{font-size:12px;color:#334155;text-align:center}
-  .hint{padding:8px 12px;color:#334155;font-size:13px}
-  code.k{background:#eef2ff;padding:2px 6px;border-radius:6px}
+  :root{ --H: 460px; --hot:#ffcc00; --wire:#6b7280; --part:#111827; --bg:#f8fafc; }
+  *{ box-sizing:border-box }
+  body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:#0f172a; background:var(--bg) }
+  header{ padding:10px 16px; background:#0ea5e9; color:#fff; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+  header h1{ margin:0; font-size:16px; font-weight:700 }
+  .mode{ margin-left:auto; display:flex; gap:8px }
+  .mode button{ border:0; border-radius:999px; padding:8px 12px; background:#0284c7; color:#fff; cursor:pointer }
+  .mode button.active{ background:#22c55e }
+  /* ★ 横に並べる／高さを合わせる */
+  main{ display:grid; grid-template-columns: 1.15fr 0.85fr; gap:14px; padding:14px; align-items:start }
+  .card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow:0 2px 6px rgba(0,0,0,.04) }
+  .card h2{ margin:0; padding:10px 12px; border-bottom:1px solid #e5e7eb; font-size:15px }
+  .pane{ padding:10px }
+  /* ラダーSVG：高さを共通変数で固定 */
+  svg{ width:100%; height:var(--H); background:#fff; border-radius:12px; display:block }
+  .bus{ stroke:#111827; stroke-width:4 }
+  .wire{ stroke:var(--wire); stroke-width:3; fill:none }
+  .hot{ stroke:var(--hot)!important; stroke-width:4; filter:url(#glow) }
+  .label{ font:12px monospace; fill:#111827 }
+  .contact rect{ fill:#fff; stroke:var(--part); stroke-width:2 }
+  .contact line{ stroke:var(--part); stroke-width:2 }
+  .coil circle{ fill:#fff; stroke:var(--part); stroke-width:2 }
+  .coil.energized circle{ stroke:#f59e0b; stroke-width:3; filter:url(#glow) }
+  .badge{ opacity:0; transition:.15s ease; font:12px monospace; fill:#b45309 }
+  .badge-bg{ opacity:0; transition:.15s ease; fill:#fff7ed; stroke:#f59e0b }
+  .coil.energized + .badge-bg, .coil.energized ~ .badge { opacity:1 }
+  /* 検定盤（右）も同じ高さに収める枠 */
+  .board-frame{ height:var(--H); display:flex; align-items:center; justify-content:center }
+  .board{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; place-items:center; width:100%; max-width:460px }
+  .pb{ width:86px; height:86px; border-radius:14px; border:2px solid #cbd5e1; background:#f1f5f9; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; user-select:none }
+  .pb .cap{ width:42px; height:42px; border-radius:50% }
+  .pb.start .cap{ background:#10b981 }
+  .pb.stop  .cap{ background:#ef4444 }
+  .lamp{ grid-column: span 3; width:132px; height:132px; border-radius:50%; border:8px solid #334155; background:#0f172a; position:relative; box-shadow:inset 0 0 20px rgba(0,0,0,.6) }
+  .lamp.on{ background:#facc15; box-shadow:0 0 30px #facc15, inset 0 0 16px rgba(0,0,0,.5) }
+  /* ★ 通電アピール：ランプの外側にパルス光輪 */
+  .lamp.on::after{ content:""; position:absolute; inset:-14px; border-radius:50%; border:6px solid rgba(250,204,21,.45); animation:pulse 1.4s ease-out infinite }
+  @keyframes pulse{ 0%{ transform:scale(.9); opacity:.9 } 100%{ transform:scale(1.25); opacity:0 } }
+  .legend{ font-size:12px; color:#334155; text-align:center }
+  .hint{ padding:6px 10px; color:#334155; font-size:12px }
+  code.k{ background:#eef2ff; padding:2px 6px; border-radius:6px }
+  /* 画面が極端に狭い場合のみ縦並び（PC授業は横のまま） */
+  @media (max-width: 880px){
+    main{ grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -50,37 +62,40 @@
 </header>
 
 <main>
+  <!-- 左：ラダー -->
   <section class="card">
-    <h2>ラダー（通電で配線が<svg width="10" height="10"><rect width="10" height="10" fill="#ffd84d"/></svg>黄色に発光）</h2>
+    <h2>ラダー（通電＝配線とコイルが発光）</h2>
     <div class="pane">
-      <!-- Ladder SVG -->
-      <svg viewBox="0 0 640 520" id="ladder">
-        <!-- Buses -->
+      <svg viewBox="0 0 640 520" id="ladder" aria-label="ladder">
+        <defs>
+          <!-- ★ 発光フィルタ -->
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- 縦母線 -->
         <line x1="40" y1="40" x2="40" y2="480" class="bus"/>
         <line x1="600" y1="40" x2="600" y2="480" class="bus"/>
-        <!-- Rung captions -->
         <text x="50" y="70" class="label">Rung 1</text>
 
-        <!-- STOP (NC) contact (left series) -->
+        <!-- STOP (NC) -->
         <g id="stop" class="contact">
           <rect x="100" y="120" width="90" height="40" rx="6" ry="6"/>
-          <!-- NC図示：斜線で閉路 -->
           <line x1="115" y1="140" x2="175" y2="140" />
           <line x1="175" y1="130" x2="175" y2="150" />
           <text x="110" y="115" class="label">PB2 STOP (NC)</text>
         </g>
-        <!-- wire to STOP -->
         <line id="w_l_stop" x1="40" y1="140" x2="100" y2="140" class="wire"/>
         <line id="w_stop_r" x1="190" y1="140" x2="260" y2="140" class="wire"/>
 
-        <!-- Branch down/up rails -->
+        <!-- 分岐レール -->
         <line id="w_branch_down" x1="260" y1="140" x2="260" y2="220" class="wire"/>
         <line id="w_branch_up"   x1="400" y1="140" x2="400" y2="220" class="wire"/>
 
-        <!-- START (NO) branch (upper) -->
+        <!-- START (NO) 上段 -->
         <g id="start" class="contact">
           <rect x="270" y="120" width="110" height="40" rx="6" ry="6"/>
-          <!-- NO図示：ギャップ -->
           <line x1="285" y1="140" x2="340" y2="140" />
           <line x1="340" y1="130" x2="340" y2="150" />
           <text x="280" y="115" class="label">PB1 START (NO)</text>
@@ -88,26 +103,29 @@
         <line id="w_start_l" x1="260" y1="140" x2="270" y2="140" class="wire"/>
         <line id="w_start_r" x1="380" y1="140" x2="400" y2="140" class="wire"/>
 
-        <!-- SEAL (PL1 aux NO) branch (lower) -->
+        <!-- 自己保持接点（PL1 a, NO）下段 -->
         <g id="seal" class="contact">
           <rect x="270" y="200" width="110" height="40" rx="6" ry="6"/>
           <line x1="285" y1="220" x2="340" y2="220" />
           <line x1="340" y1="210" x2="340" y2="230" />
-          <text x="272" y="195" class="label">PL1 自己保持接点 (NO)</text>
+          <text x="272" y="195" class="label">PL1 自己保持 (NO)</text>
         </g>
         <line id="w_seal_l" x1="260" y1="220" x2="270" y2="220" class="wire"/>
         <line id="w_seal_r" x1="380" y1="220" x2="400" y2="220" class="wire"/>
 
-        <!-- merge to coil -->
+        <!-- コイルへ -->
         <line id="w_merge" x1="400" y1="180" x2="460" y2="180" class="wire"/>
-        <!-- COIL -->
         <g id="coil" class="coil">
           <circle cx="520" cy="180" r="26"/>
           <text x="495" y="220" class="label">PL1 コイル</text>
         </g>
+        <!-- ★ 通電中バッジ（背景＋文字、energizedで表示） -->
+        <rect id="badge-bg" class="badge-bg" x="462" y="98" rx="6" ry="6" width="130" height="26"/>
+        <text id="badge" class="badge" x="472" y="116">▶ 通電中 / ENERGIZED</text>
+
         <line id="w_coil_r" x1="546" y1="180" x2="600" y2="180" class="wire"/>
 
-        <!-- ON-circuit (single NO) elements (hidden in latch mode) -->
+        <!-- ON回路（切替で表示） -->
         <g id="oncircuit" style="display:none">
           <text x="50" y="330" class="label">Rung 1 (ON回路)</text>
           <g id="on_no" class="contact">
@@ -126,28 +144,29 @@
         </g>
       </svg>
       <div class="hint">
-        操作：<code class="k">PB1</code>（START）を押す／離す、<code class="k">PB2</code>（STOP）を押す（自己保持はSTOPで解列）。<br>
-        キーボード：<code class="k">1</code>=START押下、<code class="k">2</code>=STOP押下。離すと自動で戻ります。
+        操作：<code class="k">PB1</code>（START）を押す／離す、<code class="k">PB2</code>（STOP）を押す（自己保持はSTOPで解列）。　
+        キーボード：<code class="k">1</code>=START、<code class="k">2</code>=STOP。
       </div>
     </div>
   </section>
 
+  <!-- 右：検定盤 -->
   <section class="card">
     <h2>検定盤（ボタン＆パイロットランプ）</h2>
     <div class="pane">
-      <div class="board">
-        <div id="pb1" class="pb start" title="PB1 START (NO)">
-          <div class="cap"></div>
-          <div class="legend">PB1<br>START</div>
-        </div>
-        <div id="pb2" class="pb stop" title="PB2 STOP (NC)">
-          <div class="cap"></div>
-          <div class="legend">PB2<br>STOP</div>
-        </div>
-        <div class="pb" style="visibility:hidden"></div>
-        <div id="lamp" class="lamp" aria-label="PL1"></div>
-        <div class="legend" style="grid-column: span 3;">
-          PL1：点灯=通電　/　消灯=無電
+      <div class="board-frame">
+        <div class="board">
+          <div id="pb1" class="pb start" title="PB1 START (NO)">
+            <div class="cap"></div>
+            <div class="legend">PB1<br>START</div>
+          </div>
+          <div id="pb2" class="pb stop" title="PB2 STOP (NC)">
+            <div class="cap"></div>
+            <div class="legend">PB2<br>STOP</div>
+          </div>
+          <div class="pb" style="visibility:hidden"></div>
+          <div id="lamp" class="lamp" aria-label="PL1"></div>
+          <div class="legend" style="grid-column: span 3;">PL1：点灯=通電 / 消灯=無電</div>
         </div>
       </div>
     </div>
@@ -157,17 +176,17 @@
 <script>
 (()=> {
   // 状態
-  let mode = 'latch'; // 'on' or 'latch'
-  let startPressed = false; // PB1 (NO)
-  let stopPressed = false;  // PB2 (NC) ※押すと開く
-  let pl1 = false;          // コイル（パイロットランプ）
+  let mode = 'latch';           // 'on' or 'latch'
+  let startPressed = false;     // PB1 (NO)
+  let stopPressed  = false;     // PB2 (NC) ※押すと開放
+  let pl1 = false;              // コイル（パイロットランプ）
 
-  // 要素取得
+  // 要素
   const lamp = document.getElementById('lamp');
   const modeOnBtn = document.getElementById('mode-on');
   const modeLatchBtn = document.getElementById('mode-latch');
+  const coilG = document.getElementById('coil');
 
-  // ラダー配線（線ごとに hot クラスを付け替える）
   const wires = {
     w_l_stop:  document.getElementById('w_l_stop'),
     w_stop_r:  document.getElementById('w_stop_r'),
@@ -179,62 +198,43 @@
     w_seal_r:  document.getElementById('w_seal_r'),
     w_merge:   document.getElementById('w_merge'),
     w_coil_r:  document.getElementById('w_coil_r'),
-    // ON回路
     w_on_left: document.getElementById('w_on_left'),
     w_on_mid:  document.getElementById('w_on_mid'),
     w_on_right:document.getElementById('w_on_right'),
   };
-
-  const groupOn = document.getElementById('oncircuit');
-
-  function setHot(el, on){ el?.classList.toggle('hot', !!on); }
+  function setHot(el,on){ el && el.classList.toggle('hot', !!on); }
 
   function evaluate(){
     if(mode === 'on'){
-      // 単純ON回路：コイルはPB1が押されている間のみ
-      const leftBus = true;
-      const throughNO = startPressed; // NO接点
-      const coilPower = leftBus && throughNO;
-      setHot(wires.w_on_left, leftBus);
-      setHot(wires.w_on_mid,  leftBus && throughNO);
+      const throughNO = startPressed;   // NO接点
+      const coilPower = throughNO;
+      setHot(wires.w_on_left, true);
+      setHot(wires.w_on_mid,  throughNO);
       setHot(wires.w_on_right, coilPower);
       pl1 = coilPower;
     }else{
-      // 自己保持回路
-      // STOPはNC：押していない時 true（導通）、押すと false（開放）
+      // 自己保持
       const stopNC = !stopPressed;
-      // STARTはNO：押した時だけ導通
       const startNO = startPressed;
-      // 自己保持（PL1のa接点）＝ コイルがONなら導通
-      const sealNO = pl1;
+      const sealNO  = pl1;              // 自己保持接点（コイルONで導通）
 
-      // 導通計算（可視化用に段階的に）
-      const leftToStop = true;
-      const afterStop = leftToStop && stopNC;
-
+      const afterStop   = stopNC;
       const upperBranch = afterStop && startNO;
       const lowerBranch = afterStop && sealNO;
-      const merged = (upperBranch || lowerBranch);
+      const merged      = (upperBranch || lowerBranch);
+      const coilPower   = merged;
 
-      const coilPower = merged;
-
-      // 線の発光
-      setHot(wires.w_l_stop, leftToStop);
-      setHot(wires.w_stop_r, afterStop);
-
+      setHot(wires.w_l_stop,  true);
+      setHot(wires.w_stop_r,  afterStop);
       setHot(wires.w_branch_down, afterStop);
       setHot(wires.w_branch_up,   merged);
-
       setHot(wires.w_start_l, afterStop);
       setHot(wires.w_start_r, upperBranch);
-
-      setHot(wires.w_seal_l, afterStop);
-      setHot(wires.w_seal_r, lowerBranch);
-
+      setHot(wires.w_seal_l,  afterStop);
+      setHot(wires.w_seal_r,  lowerBranch);
       setHot(wires.w_merge,   merged);
       setHot(wires.w_coil_r,  coilPower);
 
-      // コイル最終状態（自己保持）
       pl1 = coilPower;
     }
     render();
@@ -242,53 +242,40 @@
 
   function render(){
     lamp.classList.toggle('on', pl1);
+    coilG.classList.toggle('energized', pl1); // ★ コイルを強調発光
   }
 
-  // ボタンの操作（Pointer：押している間だけON）
+  // 検定盤ボタン
   const pb1 = document.getElementById('pb1');
   const pb2 = document.getElementById('pb2');
-
-  // START（NO）
-  const pressStart = ()=>{ startPressed = true; evaluate(); };
+  const pressStart   = ()=>{ startPressed = true;  evaluate(); };
   const releaseStart = ()=>{ startPressed = false; evaluate(); };
-  // STOP（NC）押すと開放
-  const pressStop = ()=>{ stopPressed = true; evaluate(); };
-  const releaseStop = ()=>{ stopPressed = false; evaluate(); };
+  const pressStop    = ()=>{ stopPressed  = true;  evaluate(); };
+  const releaseStop  = ()=>{ stopPressed  = false; evaluate(); };
 
   ['pointerdown','mousedown','touchstart'].forEach(ev=>pb1.addEventListener(ev, e=>{e.preventDefault(); pressStart();}));
   ['pointerup','mouseleave','touchend','touchcancel'].forEach(ev=>pb1.addEventListener(ev, e=>{e.preventDefault(); releaseStart();}));
-
   ['pointerdown','mousedown','touchstart'].forEach(ev=>pb2.addEventListener(ev, e=>{e.preventDefault(); pressStop();}));
   ['pointerup','mouseleave','touchend','touchcancel'].forEach(ev=>pb2.addEventListener(ev, e=>{e.preventDefault(); releaseStop();}));
 
-  // キー操作：1=START、2=STOP
-  window.addEventListener('keydown', (e)=>{
-    if(e.repeat) return;
-    if(e.key==='1'){ pressStart(); }
-    if(e.key==='2'){ pressStop(); }
-  });
-  window.addEventListener('keyup', (e)=>{
-    if(e.key==='1'){ releaseStart(); }
-    if(e.key==='2'){ releaseStop(); }
-  });
+  // キーボード：1=START、2=STOP
+  window.addEventListener('keydown', e=>{ if(e.repeat) return; if(e.key==='1') pressStart(); if(e.key==='2') pressStop(); });
+  window.addEventListener('keyup',   e=>{ if(e.key==='1') releaseStart(); if(e.key==='2') releaseStop(); });
 
   // モード切替
   function setMode(m){
     mode = m;
     modeOnBtn.classList.toggle('active', m==='on');
     modeLatchBtn.classList.toggle('active', m==='latch');
-    groupOn.style.display = (m==='on') ? 'inline' : 'none';
-    // 初期化
+    document.getElementById('oncircuit').style.display = (m==='on') ? 'inline' : 'none';
     startPressed=false; stopPressed=false; if(m==='on') pl1=false;
-    // ラダーの線色をリセット
     Object.values(wires).forEach(w=>setHot(w,false));
     evaluate();
   }
-  modeOnBtn.onclick = ()=> setMode('on');
-  modeLatchBtn.onclick = ()=> setMode('latch');
+  modeOnBtn.onclick   = ()=> setMode('on');
+  modeLatchBtn.onclick= ()=> setMode('latch');
 
-  // 初期描画
-  evaluate();
+  evaluate(); // 初期描画
 })();
 </script>
 </body>
