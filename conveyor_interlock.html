@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>検定盤シミュレーション（PB1/PB2＋切替／相互インタロック付きON回路）</title>
+<style>
+  :root { --panel-max-width: 900px; }
+  html, body { margin:0; height:100%; background:#0b0b0c; color:#e7e7e7; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif; }
+  .wrap { min-height:100%; display:grid; place-items:center; padding:16px; }
+
+  .panel { position:relative; width:min(96vw, var(--panel-max-width)); }
+  .panel > img { display:block; width:100%; height:auto; object-fit:contain; user-select:none; pointer-events:none; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,.45); }
+
+  /* すべてのレイヤーはデフォでクリック不可に */
+  .layer { position:absolute; inset:0; pointer-events:none; }
+
+  /* クリックできる要素のみ有効化 */
+  .hitbox, .work, .selector { pointer-events:auto; }
+
+  .hitbox { position:absolute; transform:translate(-50%, -50%); background:transparent; border:none; cursor:pointer; z-index:50; }
+  .hitbox.debug { background: rgba(14,165,233,0.12); outline: 2px solid rgba(14,165,233,0.7); }
+
+  .belt { position:absolute; left:23%; right:24%; top:42.9%; height:8.2%; border-radius:8px; }
+  .belt::before { content:""; position:absolute; inset:0; background: rgba(63,187,171,0.28); mix-blend-mode:screen; border-radius:inherit; }
+
+  .work {
+    position:absolute; width:14.3%; height:auto; top:42%;
+    left:50%; transform:translate(-50%,0);
+    border:1.5px solid #3a3d44; border-radius:6px;
+    box-shadow:0 4px 12px rgba(0,0,0,.45); z-index:20; display:block;
+    cursor:grab; touch-action:none; user-select:none;
+  }
+  .work:active { cursor:grabbing; }
+
+  .ls { position:absolute; width:14.8%; height:auto; transform:translate(-50%,-50%); z-index:40; pointer-events:none; }
+
+  .bar { display:flex; gap:12px; align-items:center; justify-content:space-between; width:min(96vw, var(--panel-max-width)); margin:10px auto 0; font-size:14px; color:#cfcfcf; }
+  .bar label { display:flex; align-items:center; gap:.5em; font-size:13px; opacity:.9 }
+  .kbd { background:#16181d; border:1px solid #2a2d34; padding:2px 6px; border-radius:6px; font-size:12px; }
+
+  .ls-zone { position:absolute; transform:translate(-50%,-50%); width:7.5%; height:8%; z-index:25; pointer-events:none; }
+
+  .indicator { display:inline-flex; align-items:center; gap:6px; }
+  .dot { width:9px; height:9px; border-radius:999px; background:#6b7280; }
+  .dot.on { background:#22c55e; box-shadow:0 0 8px #22c55e; }
+
+  /* 切替スイッチ（クリック可） */
+  .selector { position:absolute; width:6.8%; height:auto; transform:translate(-50%,-50%); z-index:45; user-select:none; cursor:pointer; }
+
+  /* --- ランプ（PL1/PL2） --- */
+  .lamp {
+    position:absolute;
+    width:2.3%;
+    aspect-ratio:1/1;
+    transform:translate(-50%,-50%);
+    border-radius:999px;
+    background:#22c55e;              /* 元の緑色を保持 */
+    opacity:0;                       /* ★OFF時は透明にする */
+    box-shadow:none;                 /* OFF時は光らない */
+    z-index:42;
+  }
+  .lamp.on {
+    opacity:1;                       /* ★ON時だけ表示 */
+    box-shadow:0 0 10px #22c55e,
+               0 0 22px rgba(34,197,94,.75),
+               0 0 36px rgba(34,197,94,.45);
+  }
+
+  /* LS上部の青色高輝度LED */
+  .led-blue { position:absolute; width:1.2%; aspect-ratio:1/1; transform:translate(-50%,-50%); border-radius:0px; background:#1f2a44; box-shadow: inset 0 0 4px rgba(0,0,0,.8); z-index:43; }
+  .led-blue.on { background:#3abff8; box-shadow: 0 0 12px #3abff8, 0 0 22px rgba(58,191,248,.85); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel" id="panel">
+      <img id="panelImage" src="panel2.png" alt="検定盤（実写）" />
+
+      <div class="layer"><div class="belt" aria-hidden="true"></div></div>
+
+      <div class="layer">
+        <img id="work" class="work" src="work.png" alt="ワーク" title="ワーク" draggable="false" />
+      </div>
+
+      <div class="layer" aria-hidden="true">
+        <img id="lsLeft"  class="ls" src="limit1.png" alt="左リミット"  style="left:66%; top:49%;" />
+        <img id="lsRight" class="ls" src="limit2.png" alt="右リミット" style="left:33%; top:45%;" />
+      </div>
+
+      <div class="layer" aria-hidden="true">
+        <div id="zoneLeft"  class="ls-zone" style="left:21%; top:48.0%;"></div>
+        <div id="zoneRight" class="ls-zone" style="left:78%; top:48.0%;"></div>
+      </div>
+
+      <!-- PB1/PB2（z-index:50） -->
+      <div class="layer">
+        <button id="pb1" class="hitbox" title="PB1：左へ送る" aria-label="PB1" style="left:30%; top:82.0%; width:6%; height:4%;"></button>
+        <button id="pb2" class="hitbox" title="PB2：右へ送る" aria-label="PB2" style="left:38.0%; top:82.0%; width:6%; height:4%;"></button>
+      </div>
+
+      <!-- 切替スイッチ画像（ご指定のPNG） -->
+      <div class="layer">
+        <!-- 左側 -->
+        <img id="selector" class="selector"
+             src="chang_l-removebg-preview.png"
+             alt="切替スイッチ" title="切替スイッチ（クリックで切替）"
+             style="left:13.9%; top:82.8%;" draggable="false" />
+        <!-- 右隣 -->
+        <img id="selector2" class="selector"
+             src="chang_l-removebg-preview.png"
+             alt="切替スイッチ2" title="切替スイッチ2（クリックで切替）"
+             style="left:21.9%; top:82.8%;" draggable="false" />
+      </div>
+
+      <!-- PL1 / PL2 — 位置は「これまで通り」 -->
+      <div class="layer" aria-hidden="true">
+        <div id="pl1" class="lamp" style="left:30%; top:69.3%;"></div>
+        <div id="pl2" class="lamp" style="left:37.8%; top:69.3%;"></div>
+      </div>
+
+      <!-- LS上部の青色高輝度LED（各LSの上） -->
+      <div class="layer" aria-hidden="true">
+        <div id="ls1Blue" class="led-blue" style="left:31%; top:46%;"></div>
+        <div id="ls2Blue" class="led-blue" style="left:68%; top:46%;"></div>
+      </div>
+    </section>
+
+    <div class="bar">
+      <div>
+        PB1: <span id="pb1State">OFF</span>／ PB2: <span id="pb2State">OFF</span>
+        <span class="indicator" style="margin-left:18px;">LS左 <span id="lsLdot" class="dot"></span></span>
+        <span class="indicator">LS右 <span id="lsRdot" class="dot"></span></span>
+      </div>
+      <div>操作: 左=<span class="kbd">C</span> ／ 右=<span class="kbd">V</span> ／ 切替=<span class="kbd">X</span> ／ ドラッグ移動</div>
+      <label><input type="checkbox" id="toggleDebug" /> ヒットボックス表示</label>
+    </div>
+  </main>
+
+  <script>
+    // === パラメータ ===
+    const beltLeftPct = 23, beltRightPct = 76, workWidthPct = 9, speedPctPerSec = 25;
+
+    const $ = s => document.querySelector(s);
+    const panel = $('#panel'), work = $('#work');
+    const pb1El = $('#pb1'), pb2El = $('#pb2');
+    const pb1State = $('#pb1State'), pb2State = $('#pb2State');
+    const lsLdot = $('#lsLdot'), lsRdot = $('#lsRdot');
+    const zoneLeft = $('#zoneLeft'), zoneRight = $('#zoneRight');
+    const debugSwitch = $('#toggleDebug');
+
+    // ランプと青LED
+    const pl1El = $('#pl1'), pl2El = $('#pl2');
+    const ls1Blue = $('#ls1Blue'), ls2Blue = $('#ls2Blue');
+
+    // 切替スイッチ
+    const selectorImg = $('#selector');
+    const selectorImg2 = $('#selector2');
+    const SWITCH_LEFT_IMG  = 'chang_l-removebg-preview.png';
+    const SWITCH_RIGHT_IMG = 'chang_r-removebg-preview.png';
+    [SWITCH_LEFT_IMG, SWITCH_RIGHT_IMG].forEach(src => { const i = new Image(); i.src = src; });
+
+    let pb1Pressed = false, pb2Pressed = false, workLeftPct = 50, dragging = false;
+    let selector = 'left';   // 'left' | 'right'
+    let selector2 = 'left';  // 右隣スイッチの状態
+
+    const minCenter = () => beltLeftPct + workWidthPct/2;
+    const maxCenter = () => beltRightPct - workWidthPct/2;
+    const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+
+    function placeWork(){ work.style.left = workLeftPct + '%'; }
+
+    function updatePBText(){
+      pb1State.textContent = pb1Pressed ? 'ON（押下中）' : 'OFF';
+      pb2State.textContent = pb2Pressed ? 'ON（押下中）' : 'OFF';
+      // 押下中のみ点灯（緑）…ON回路のまま
+      pl1El.classList.toggle('on', pb1Pressed);
+      pl2El.classList.toggle('on', pb2Pressed);
+    }
+
+    function rectOf(el){ const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height}; }
+    function intersects(a,b){ return !(a.x+a.w < b.x || b.x+b.w < a.x || a.y+a.h < b.y || b.y+b.h < a.y); }
+
+    function updateLS(){
+      const a = rectOf(work), l = rectOf(zoneLeft), r = rectOf(zoneRight);
+      const L_on = intersects(a,l);
+      const R_on = intersects(a,r);
+      lsLdot.classList.toggle('on', L_on);
+      lsRdot.classList.toggle('on', R_on);
+      // LS上部の青色高輝度LED
+      ls1Blue.classList.toggle('on', L_on);
+      ls2Blue.classList.toggle('on', R_on);
+    }
+
+    function renderSelector(){
+      selectorImg.src = (selector === 'left') ? SWITCH_LEFT_IMG : SWITCH_RIGHT_IMG;
+      selectorImg.alt = `切替スイッチ（${selector.toUpperCase()}）`;
+    }
+    function renderSelector2(){
+      selectorImg2.src = (selector2 === 'left') ? SWITCH_LEFT_IMG : SWITCH_RIGHT_IMG;
+      selectorImg2.alt = `切替スイッチ2（${selector2.toUpperCase()}）`;
+    }
+    function toggleSelector(){ selector = (selector === 'left') ? 'right' : 'left'; renderSelector(); }
+    function toggleSelector2(){ selector2 = (selector2 === 'left') ? 'right' : 'left'; renderSelector2(); }
+
+    function pxToPct(clientX){
+      const r = panel.getBoundingClientRect();
+      const x = clamp(clientX, r.left, r.right);
+      return ((x - r.left) / r.width) * 100;
+    }
+
+    let rafId = null, lastT = 0;
+    function loop(t){
+      if(!lastT) lastT = t;
+      const dt = (t - lastT) / 1000; lastT = t;
+      if (!dragging){
+        let dir = 0;
+        // ★相互インタロック：常に同時駆動を禁止し、一方が押されている間は他方はONにさせない
+        if (pb1Pressed && !pb2Pressed) dir = -1;
+        if (pb2Pressed && !pb1Pressed) dir = +1;
+        if (dir){
+          workLeftPct = clamp(workLeftPct + dir * speedPctPerSec * dt, minCenter(), maxCenter());
+          placeWork(); updateLS();
+        }
+      }
+      rafId = requestAnimationFrame(loop);
+    }
+
+    // ==== ここが主な変更点：押下処理に相互インタロックを実装 ====
+    function press(which, down){
+      if (which === 1){
+        if (down){
+          // RY2（=pb2Pressed）がONなら RY1は禁止
+          if (pb2Pressed) return;         // ★インタロック：禁止
+          pb1Pressed = true;
+        } else {
+          pb1Pressed = false;
+        }
+      }
+      if (which === 2){
+        if (down){
+          // RY1（=pb1Pressed）がONなら RY2は禁止
+          if (pb1Pressed) return;         // ★インタロック：禁止
+          pb2Pressed = true;
+        } else {
+          pb2Pressed = false;
+        }
+      }
+      updatePBText();
+    }
+
+    // マウス/タッチ
+    pb1El.addEventListener('pointerdown', ()=>press(1,true));
+    pb1El.addEventListener('pointerup',   ()=>press(1,false));
+    pb1El.addEventListener('pointerleave',()=>press(1,false));
+    pb1El.addEventListener('pointercancel',()=>press(1,false));
+    pb2El.addEventListener('pointerdown', ()=>press(2,true));
+    pb2El.addEventListener('pointerup',   ()=>press(2,false));
+    pb2El.addEventListener('pointerleave',()=>press(2,false));
+    pb2El.addEventListener('pointercancel',()=>press(2,false));
+
+    // キーボード（C=左／V=右）
+    window.addEventListener('keydown', (e)=>{ if(e.repeat) return;
+      if(e.key.toLowerCase()==='c') press(1,true);
+      if(e.key.toLowerCase()==='v') press(2,true);
+      if(e.key.toLowerCase()==='x') toggleSelector();
+    });
+    window.addEventListener('keyup', (e)=>{
+      if(e.key.toLowerCase()==='c') press(1,false);
+      if(e.key.toLowerCase()==='v') press(2,false);
+    });
+
+    // 切替スイッチ：クリック
+    selectorImg.addEventListener('pointerdown', (e)=>{ e.preventDefault(); toggleSelector(); });
+    selectorImg2.addEventListener('pointerdown', (e)=>{ e.preventDefault(); toggleSelector2(); });
+
+    // ドラッグ移動
+    function setWorkByClientX(x){ workLeftPct = clamp(pxToPct(x), minCenter(), maxCenter()); placeWork(); updateLS(); }
+    work.addEventListener('pointerdown', (e)=>{ dragging=true; work.setPointerCapture(e.pointerId); setWorkByClientX(e.clientX); });
+    work.addEventListener('pointermove', (e)=>{ if(!dragging) return; setWorkByClientX(e.clientX); });
+    function endDrag(e){ if(!dragging) return; dragging=false; try{ work.releasePointerCapture(e.pointerId);}catch(_){} }
+    work.addEventListener('pointerup', endDrag);
+    work.addEventListener('pointercancel', endDrag);
+    work.addEventListener('pointerleave', endDrag);
+    work.addEventListener('dragstart', e=>e.preventDefault());
+
+    // フォーカス喪失
+    window.addEventListener('blur', ()=>{ pb1Pressed=false; pb2Pressed=false; updatePBText(); });
+
+    // デバッグ表示
+    function toggleDebug(){ const on = debugSwitch.checked; pb1El.classList.toggle('debug', on); pb2El.classList.toggle('debug', on); }
+    debugSwitch.addEventListener('change', toggleDebug);
+
+    // 起動
+    renderSelector();
+    renderSelector2();
+    placeWork(); updatePBText(); updateLS();
+    rafId = requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
