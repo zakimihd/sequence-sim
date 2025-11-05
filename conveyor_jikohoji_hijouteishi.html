@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>検定盤シミュレーション（PB5非常停止＋PB4解除＋自己保持＋インタロック）</title>
+<style>
+  :root { --panel-max-width: 900px; }
+  html, body { margin:0; height:100%; background:#0b0b0c; color:#e7e7e7;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif; }
+  .wrap { min-height:100%; display:grid; place-items:center; padding:16px; }
+
+  .panel { position:relative; width:min(96vw, var(--panel-max-width)); }
+  .panel > img { display:block; width:100%; height:auto; object-fit:contain;
+    user-select:none; pointer-events:none; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,.45); }
+
+  .layer { position:absolute; inset:0; pointer-events:none; }
+  .hitbox, .work, .selector { pointer-events:auto; }
+
+  .hitbox { position:absolute; transform:translate(-50%, -50%);
+    background:transparent; border:none; cursor:pointer; z-index:50; }
+
+  .belt { position:absolute; left:23%; right:24%; top:42.9%; height:8.2%; border-radius:8px; }
+  .belt::before { content:""; position:absolute; inset:0;
+    background: rgba(63,187,171,0.28); mix-blend-mode:screen; border-radius:inherit; }
+
+  .work { position:absolute; width:14.3%; height:auto; top:42%;
+    left:50%; transform:translate(-50%,0);
+    border:1.5px solid #3a3d44; border-radius:6px;
+    box-shadow:0 4px 12px rgba(0,0,0,.45); z-index:20;
+    cursor:grab; touch-action:none; user-select:none; }
+  .work:active { cursor:grabbing; }
+
+  .ls { position:absolute; width:14.8%; height:auto;
+    transform:translate(-50%,-50%); z-index:80; pointer-events:none; }
+
+  .lamp { position:absolute; width:2.3%; aspect-ratio:1/1;
+    transform:translate(-50%,-50%); border-radius:999px;
+    background:#22c55e; opacity:0; box-shadow:none; z-index:42; }
+  .lamp.on { opacity:1;
+    box-shadow:0 0 10px #22c55e, 0 0 22px rgba(34,197,94,.75),
+               0 0 36px rgba(34,197,94,.45); }
+
+  .led-blue { position:absolute; width:1.2%; aspect-ratio:1/1;
+    transform:translate(-50%,-50%); border-radius:0;
+    background:#1f2a44; box-shadow: inset 0 0 4px rgba(0,0,0,.8);
+    z-index:90; }
+  .led-blue.on { background:#3abff8;
+    box-shadow:0 0 12px #3abff8, 0 0 22px rgba(58,191,248,.85); }
+
+  .ls-zone { position:absolute; transform:translate(-50%,-50%);
+    width:7.5%; height:8%; z-index:25; pointer-events:none; }
+
+  .selector { position:absolute; width:6.8%; height:auto;
+    transform:translate(-50%,-50%); z-index:45; user-select:none; cursor:pointer; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="panel" id="panel">
+    <img id="panelImage" src="panel2.png" alt="検定盤（実写）" />
+    <div class="layer"><div class="belt" aria-hidden="true"></div></div>
+
+    <!-- ワーク -->
+    <div class="layer">
+      <img id="work" class="work" src="work.png" draggable="false" />
+    </div>
+
+    <!-- LS -->
+    <div class="layer" aria-hidden="true">
+      <img id="lsLeft"  class="ls" src="limit1.png" style="left:66%; top:49%;" />
+      <img id="lsRight" class="ls" src="limit2.png" style="left:33%; top:45%;" />
+    </div>
+
+    <!-- LSゾーン -->
+    <div class="layer" aria-hidden="true">
+      <div id="zoneLeft"  class="ls-zone" style="left:21%; top:48%;"></div>
+      <div id="zoneRight" class="ls-zone" style="left:78%; top:48%;"></div>
+    </div>
+
+    <!-- PB1〜PB5 -->
+    <div class="layer">
+      <button id="pb1" class="hitbox" style="left:30%; top:82%; width:6%; height:4%;" title="左へ（自己保持）"></button>
+      <button id="pb2" class="hitbox" style="left:38%; top:82%; width:6%; height:4%;" title="右へ（自己保持）"></button>
+      <button id="pb4" class="hitbox" style="left:54%; top:82%; width:5%; height:4%;" title="非常停止解除"></button>
+      <button id="pb5" class="hitbox" style="left:63%; top:81%; width:8%; height:8%;" title="非常停止"></button>
+    </div>
+
+    <!-- 切替スイッチ -->
+    <div class="layer">
+      <img id="selector" class="selector"
+           src="chang_l-removebg-preview.png"
+           style="left:13.9%; top:82.8%;" draggable="false" />
+      <img id="selector2" class="selector"
+           src="chang_l-removebg-preview.png"
+           style="left:21.9%; top:82.8%;" draggable="false" />
+    </div>
+
+    <!-- ランプ -->
+    <div class="layer" aria-hidden="true">
+      <div id="pl1" class="lamp" style="left:30%;  top:69.3%;"></div>
+      <div id="pl2" class="lamp" style="left:37.8%; top:69.3%;"></div>
+    </div>
+
+    <!-- 高輝度LED -->
+    <div class="layer" aria-hidden="true" style="z-index:90;">
+      <div id="ls1Blue" class="led-blue" style="left:31%; top:46%;"></div>
+      <div id="ls2Blue" class="led-blue" style="left:68%; top:46%;"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const panel = $('#panel'), work = $('#work');
+const pb1El = $('#pb1'), pb2El = $('#pb2'), pb4El = $('#pb4'), pb5El = $('#pb5');
+const pl1El = $('#pl1'), pl2El = $('#pl2');
+const ls1Blue = $('#ls1Blue'), ls2Blue = $('#ls2Blue');
+const zoneLeft = $('#zoneLeft'), zoneRight = $('#zoneRight');
+const selectorImg = $('#selector'), selectorImg2 = $('#selector2');
+
+const SWITCH_LEFT_IMG='chang_l-removebg-preview.png', SWITCH_RIGHT_IMG='chang_r-removebg-preview.png';
+[SWITCH_LEFT_IMG,SWITCH_RIGHT_IMG].forEach(s=>{const i=new Image();i.src=s;});
+
+let workLeftPct=50, dragging=false;
+let selector='left', selector2='left';
+let emergencyStop=false; // 非常停止フラグ
+// 自己保持＆インタロック
+let latchLeft=false, latchRight=false; // 片方のみtrue（相互排他）
+
+const beltLeftPct=23,beltRightPct=76,workWidthPct=9,speedPctPerSec=25;
+const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
+const minCenter=()=>beltLeftPct+workWidthPct/2;
+const maxCenter=()=>beltRightPct-workWidthPct/2;
+function placeWork(){work.style.left=workLeftPct+'%';}
+function rectOf(el){const r=el.getBoundingClientRect();return{x:r.left,y:r.top,w:r.width,h:r.height};}
+function intersects(a,b){return!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);}
+
+/* ===== LS読み取り（LED更新もここで） ===== */
+function readLS(){
+  const a=rectOf(work),l=rectOf(zoneLeft),r=rectOf(zoneRight);
+  const L_on=intersects(a,l),R_on=intersects(a,r);
+  ls1Blue.classList.toggle('on',L_on); // 左側LED ← 左ゾーン
+  ls2Blue.classList.toggle('on',R_on); // 右側LED ← 右ゾーン
+  return {L_on,R_on};
+}
+
+/* ===== 非常停止処理 ===== */
+function engageEmergency(){
+  emergencyStop=true;
+  // すべての自己保持を解除
+  latchLeft=false; latchRight=false;
+  pl1El.classList.remove('on');
+  pl2El.classList.remove('on');
+}
+function releaseEmergency(){
+  emergencyStop=false;
+}
+
+/* ===== 切替スイッチ処理（見た目だけ） ===== */
+function renderSelector(){ selectorImg.src = (selector === 'left') ? SWITCH_LEFT_IMG : SWITCH_RIGHT_IMG; }
+function renderSelector2(){ selectorImg2.src = (selector2 === 'left') ? SWITCH_LEFT_IMG : SWITCH_RIGHT_IMG; }
+function toggleSelector(){ selector = (selector === 'left') ? 'right' : 'left'; renderSelector(); }
+function toggleSelector2(){ selector2 = (selector2 === 'left') ? 'right' : 'left'; renderSelector2(); }
+selectorImg.addEventListener('pointerdown', e => { e.preventDefault(); toggleSelector(); });
+selectorImg2.addEventListener('pointerdown', e => { e.preventDefault(); toggleSelector2(); });
+
+/* ===== PB押下（自己保持＋インタロック） ===== */
+function press(which,down){
+  // 非常停止中はPB1/2入力は無効（PB4/5は下で処理）
+  if((which===1||which===2) && (emergencyStop || !down)) return;
+
+  if(which===5 && down){ // 非常停止
+    engageEmergency();
+    return;
+  }
+  if(which===4 && down){ // 非常解除
+    releaseEmergency();
+    return;
+  }
+
+  // ここから走行系（自己保持）
+  const {L_on,R_on}=readLS();
+  if(which===1 && !latchRight && !L_on){ // 左行要求、右ラッチが無いときのみ可（相互排他）
+    latchLeft=true; latchRight=false; // インタロック
+  }
+  if(which===2 && !latchLeft && !R_on){ // 右行要求、左ラッチが無いときのみ可
+    latchRight=true; latchLeft=false; // インタロック
+  }
+}
+
+pb1El.onpointerdown=()=>press(1,true);
+pb2El.onpointerdown=()=>press(2,true);
+pb4El.onpointerdown=()=>press(4,true); // 解除
+pb5El.onpointerdown=()=>press(5,true); // 停止
+
+/* ===== キーボード（任意） ===== */
+window.addEventListener('keydown',e=>{
+  if(e.repeat)return;
+  if(e.key==='c')press(1,true);
+  if(e.key==='v')press(2,true);
+  if(e.key==='4')press(4,true);
+  if(e.key==='5')press(5,true);
+  if(e.key.toLowerCase()==='x')toggleSelector();
+});
+
+/* ===== ループ ===== */
+let lastT=0;
+function loop(t){
+  if(!lastT)lastT=t;
+  const dt=(t-lastT)/1000; lastT=t;
+
+  const {L_on,R_on}=readLS();
+
+  // 端で自己保持解除（到達停止）
+  if(latchLeft && L_on)  latchLeft=false;
+  if(latchRight && R_on) latchRight=false;
+
+  // 指令（非常停止が最優先）
+  let dir=0;
+  if(!emergencyStop){
+    if(latchLeft && !latchRight) dir=-1;
+    else if(latchRight && !latchLeft) dir=+1;
+
+    // 端保護（LSオン方向への駆動は禁止）
+    if(dir<0 && L_on) dir=0;
+    if(dir>0 && R_on) dir=0;
+  }
+
+  // 表示ランプ
+  if(dir<0){ pl1El.classList.add('on'); pl2El.classList.remove('on'); }
+  else if(dir>0){ pl2El.classList.add('on'); pl1El.classList.remove('on'); }
+  else { pl1El.classList.remove('on'); pl2El.classList.remove('on'); }
+
+  // 移動
+  if(!dragging && dir){
+    workLeftPct=clamp(workLeftPct + dir*speedPctPerSec*dt, minCenter(), maxCenter());
+    placeWork();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* ===== 起動 ===== */
+renderSelector(); renderSelector2();
+placeWork(); readLS(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
