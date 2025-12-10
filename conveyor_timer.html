@@ -270,7 +270,8 @@ selectorImg2.addEventListener('pointerdown', e => { e.preventDefault(); toggleSe
 
 /* ===== 自動スタート（左端→3秒待ち→右端で停止） ===== */
 function startAuto(){
-  if(isManual || emergencyStop) return;
+  // ★ 自動運転中(autoRunning)は再スタートさせない（インタロック）
+  if(isManual || emergencyStop || autoRunning) return;
   autoRunning = true;
   autoPhase   = 'moveLeft';   // まず左端へ
   timerActive = false;
