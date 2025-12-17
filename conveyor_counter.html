@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>検定盤シミュレーション（SS0手動/自動＋SS1回数（切=1回／入=3回）＋非常停止＋タイマー2秒）</title>
+<style>
+  :root { --panel-max-width: 900px; }
+  html, body { margin:0; height:100%; background:#0b0b0c; color:#e7e7e7;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif; }
+  .wrap { min-height:100%; display:grid; place-items:center; padding:16px; }
+
+  .panel { position:relative; width:min(96vw, var(--panel-max-width)); }
+  .panel > img { display:block; width:100%; height:auto; object-fit:contain;
+    user-select:none; pointer-events:none; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,.45); }
+
+  .layer { position:absolute; inset:0; pointer-events:none; }
+  .hitbox, .work, .selector { pointer-events:auto; }
+
+  .hitbox { position:absolute; transform:translate(-50%, -50%);
+    background:transparent; border:none; cursor:pointer; z-index:50; }
+
+  .belt { position:absolute; left:23%; right:24%; top:42.9%; height:8.2%; border-radius:8px; }
+  .belt::before { content:""; position:absolute; inset:0;
+    background: rgba(63,187,171,0.28); mix-blend-mode:screen; border-radius:inherit; }
+
+  .work { position:absolute; width:14.3%; height:auto; top:42%;
+    left:50%; transform:translate(-50%,0);
+    border:1.5px solid #3a3d44; border-radius:6px;
+    box-shadow:0 4px 12px rgba(0,0,0,.45); z-index:20;
+    cursor:grab; touch-action:none; user-select:none; }
+  .work:active { cursor:grabbing; }
+
+  .ls { position:absolute; width:14.8%; height:auto;
+    transform:translate(-50%,-50%); z-index:80; pointer-events:none; }
+
+  .bar { display:flex; gap:12px; align-items:center; justify-content:space-between;
+    width:min(96vw, var(--panel-max-width)); margin:10px auto 0; font-size:14px; color:#cfcfcf; flex-wrap:wrap; }
+  .kbd { padding:2px 6px; border:1px solid #777; border-bottom-width:2px; border-radius:4px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .ls-zone { position:absolute; transform:translate(-50%,-50%);
+    width:7.5%; height:8%; z-index:25; pointer-events:none; }
+
+  .selector { position:absolute; width:6.8%; height:auto;
+    transform:translate(-50%,-50%); z-index:45; user-select:none; cursor:pointer; }
+
+  .lamp { position:absolute; width:2.3%; aspect-ratio:1/1;
+    transform:translate(-50%,-50%);
+    border-radius:999px;
+    background:#22c55e; opacity:0; box-shadow:none; z-index:42; }
+  .lamp.on { opacity:1;
+    box-shadow:0 0 10px #22c55e, 0 0 22px rgba(34,197,94,.75),
+               0 0 36px rgba(34,197,94,.45); }
+
+  .led-blue { position:absolute; width:1.2%; aspect-ratio:1/1;
+    transform:translate(-50%,-50%); border-radius:0;
+    background:#1f2a44; box-shadow: inset 0 0 4px rgba(0,0,0,.8);
+    z-index:90; }
+  .led-blue.on { background:#3abff8;
+    box-shadow:0 0 12px #3abff8, 0 0 22px rgba(58,191,248,.85); }
+
+  .estop-overlay { position:absolute; inset:0; z-index:95; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(255,0,0,.10), rgba(255,0,0,.18));
+    display:none; border-radius:12px; }
+  .estop-overlay.on { display:block; }
+
+  .mono {
+    font-feature-settings:"tnum";
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+<section class="panel" id="panel">
+  <img id="panelImage" src="panel2.png" alt="検定盤（実写）" />
+
+  <div class="layer"><div class="belt" aria-hidden="true"></div></div>
+
+  <!-- ワーク -->
+  <div class="layer">
+    <img id="work" class="work" src="work.png" alt="ワーク" draggable="false" />
+  </div>
+
+  <!-- LS（画像は前面） -->
+  <div class="layer" aria-hidden="true">
+    <img id="lsLeft"  class="ls" src="limit1.png" style="left:66%; top:49%;" />
+    <img id="lsRight" class="ls" src="limit2.png" style="left:33%; top:45%;" />
+  </div>
+
+  <!-- LSゾーン -->
+  <div class="layer" aria-hidden="true">
+    <div id="zoneLeft"  class="ls-zone" style="left:21%; top:48%;"></div>
+    <div id="zoneRight" class="ls-zone" style="left:78%; top:48%;"></div>
+  </div>
+
+  <!-- PB1〜PB5 -->
+  <div class="layer">
+    <button id="pb1" class="hitbox" style="left:30%; top:82%; width:6%; height:4%;" title="PB1：左（手動）／自動開始"></button>
+    <button id="pb2" class="hitbox" style="left:38%; top:82%; width:6%; height:4%;" title="PB2：右（手動のみ）"></button>
+    <button id="pb4" class="hitbox" style="left:54%; top:82%; width:5%; height:4%;" title="非常停止解除（PB4）"></button>
+    <button id="pb5" class="hitbox" style="left:63%; top:81%; width:8%; height:8%;" title="非常停止（PB5）"></button>
+  </div>
+
+  <!-- 切替スイッチ（SS0／SS1） -->
+  <div class="layer">
+    <img id="selector" class="selector"
+         src="chang_l-removebg-preview.png"
+         title="SS0：左=自動／右=手動"
+         style="left:13.9%; top:82.8%;" draggable="false" />
+    <img id="selector2" class="selector"
+         src="chang_l-removebg-preview.png"
+         title="SS1：左=切（1回）／右=入（3回） ※内部ロジックは逆に補正済み"
+         style="left:21.9%; top:82.8%;" draggable="false" />
+  </div>
+
+  <!-- ランプ -->
+  <div class="layer" aria-hidden="true">
+    <div id="pl1" class="lamp" style="left:30%;  top:69.3%;"></div>
+    <div id="pl2" class="lamp" style="left:37.8%; top:69.3%;"></div>
+  </div>
+
+  <!-- 高輝度LED -->
+  <div class="layer" aria-hidden="true" style="z-index:90;">
+    <div id="ls1Blue" class="led-blue" style="left:31%; top:46%;"></div>
+    <div id="ls2Blue" class="led-blue" style="left:68%; top:46%;"></div>
+  </div>
+
+  <!-- 非常停止中の赤い薄膜 -->
+  <div id="estopOverlay" class="estop-overlay" aria-hidden="true"></div>
+</section>
+
+<!-- ステータスバー -->
+<div class="bar">
+  <div>
+    PB1:<span id="pb1State">OFF</span>／PB2:<span id="pb2State">OFF</span>／E-Stop:<span id="estopState">OFF</span>
+    ／ SS0:<span id="ss0Label">自動</span> ／ SS1:<span id="ss1Label">切(1回)</span>
+  </div>
+  <div class="mono">
+    自動：PB1開始 → 左(LS2)停止 → 2s待ち → 右(LS1)停止（1回カウント）
+    ／ 往復:<span id="cycleLabel">0</span>/<span id="cycleTarget">1</span>
+    ／ T1:<span id="timerLabel">STOP</span>
+    ／ 左=<span class="kbd">C</span> 右=<span class="kbd">V</span>
+    ／ 解除=<span class="kbd">4</span> 停止=<span class="kbd">5</span>
+    ／ SS0=<span class="kbd">X</span> SS1=<span class="kbd">Z</span>
+  </div>
+</div>
+</main>
+
+<script>
+/* ===== 要素取得 ===== */
+const $ = s => document.querySelector(s);
+const panel = $('#panel'), work = $('#work');
+const pb1El = $('#pb1'), pb2El = $('#pb2'), pb4El = $('#pb4'), pb5El = $('#pb5');
+const pb1State = $('#pb1State'), pb2State = $('#pb2State'), estopState = $('#estopState');
+const pl1El = $('#pl1'), pl2El = $('#pl2');
+const ls1Blue = $('#ls1Blue'), ls2Blue = $('#ls2Blue');
+const zoneLeft = $('#zoneLeft'), zoneRight = $('#zoneRight');
+const selectorImg = $('#selector'), selectorImg2 = $('#selector2');
+const estopOverlay = $('#estopOverlay');
+const ss0Label = $('#ss0Label'), ss1Label = $('#ss1Label');
+const timerLabel = $('#timerLabel');
+const cycleLabel = $('#cycleLabel'), cycleTarget = $('#cycleTarget');
+
+const SWITCH_LEFT_IMG='chang_l-removebg-preview.png', SWITCH_RIGHT_IMG='chang_r-removebg-preview.png';
+[SWITCH_LEFT_IMG,SWITCH_RIGHT_IMG].forEach(s=>{const i=new Image();i.src=s;});
+
+/* ===== 状態変数 ===== */
+let pb1Pressed=false, pb2Pressed=false;
+let workLeftPct=50, dragging=false;
+let moveMode=null;              // 'left'/'right'/null
+let isManual=false;             // SS0：false=自動, true=手動（初期=自動）
+let ss1Side='left';             // SS1：left=切 / right=入（見た目）
+let emergencyStop=false;
+
+let lsZoneLeftOn=false, lsZoneRightOn=false;
+
+/* 自動＋タイマー＋回数 */
+let autoRunning=false;
+let autoPhase='idle';           // 'idle','moveLeft','waitAtLeft','moveRight','stopAtRight'
+let timerActive=false;
+const TIMER_SET_SEC = 2.0;
+let timerRemaining=0;
+
+let cyclesDone=0;
+
+/* ===== 幾何パラメータ ===== */
+const beltLeftPct=23, beltRightPct=76, workWidthPct=9, speedPctPerSec=25;
+const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
+const minCenter=()=>beltLeftPct+workWidthPct/2;
+const maxCenter=()=>beltRightPct-workWidthPct/2;
+
+/* ===== SS1の回数（ここが“逆補正”済み） =====
+   ユーザー要望：SS1 切=1回 / 入=3回
+   ただし見た目の左右が逆なので、内部では
+   ss1Side==='left' を「入(3回)」、rightを「切(1回)」として扱う。
+*/
+function cycleTargetCount(){ return (ss1Side==='left') ? 3 : 1; }
+
+/* ===== 表示 ===== */
+function updateUI(){
+  pb1State.textContent = pb1Pressed ? 'ON' : 'OFF';
+  pb2State.textContent = pb2Pressed ? 'ON' : 'OFF';
+  estopState.textContent = emergencyStop ? 'ON' : 'OFF';
+  ss0Label.textContent = isManual ? '手動' : '自動';
+
+  // 表示ラベルも“逆補正”
+  ss1Label.textContent = (ss1Side==='left') ? '入(3回)' : '切(1回)';
+
+  cycleLabel.textContent = String(cyclesDone);
+  cycleTarget.textContent = String(cycleTargetCount());
+
+  if(!timerActive) timerLabel.textContent = 'STOP';
+  else timerLabel.textContent = timerRemaining.toFixed(2) + 's';
+
+  // 手動時のみ：PBに応じてランプ（両押しは停止）
+  if(isManual){
+    const on1 = pb1Pressed && !pb2Pressed && !emergencyStop;
+    const on2 = pb2Pressed && !pb1Pressed && !emergencyStop;
+    pl1El.classList.toggle('on', on1);
+    pl2El.classList.toggle('on', on2);
+  }
+}
+
+function placeWork(){ work.style.left=workLeftPct+'%'; }
+function rectOf(el){ const r=el.getBoundingClientRect(); return {x:r.left,y:r.top,w:r.width,h:r.height}; }
+function intersects(a,b){ return !(a.x+a.w<b.x || b.x+b.w<a.x || a.y+a.h<b.y || b.y+b.h<a.y); }
+
+function updateLS(){
+  const a=rectOf(work), l=rectOf(zoneLeft), r=rectOf(zoneRight);
+  const L_on = intersects(a,l), R_on = intersects(a,r);
+  lsZoneLeftOn = L_on;
+  lsZoneRightOn = R_on;
+
+  ls1Blue.classList.toggle('on', L_on);
+  ls2Blue.classList.toggle('on', R_on);
+}
+
+/* ===== リセット ===== */
+function resetAuto(){
+  autoRunning=false;
+  autoPhase='idle';
+  moveMode=null;
+  timerActive=false;
+  timerRemaining=0;
+  cyclesDone=0;
+  updateUI();
+}
+
+/* ===== 非常停止 ===== */
+function engageEmergency(){
+  emergencyStop=true;
+  pb1Pressed=false;
+  pb2Pressed=false;
+  resetAuto();
+  pl1El.classList.remove('on');
+  pl2El.classList.remove('on');
+  estopOverlay.classList.add('on');
+  updateUI();
+}
+function releaseEmergency(){
+  emergencyStop=false;
+  estopOverlay.classList.remove('on');
+  updateUI();
+}
+
+/* ===== SS0/SS1 ===== */
+function renderSelector(){
+  selectorImg.src = isManual ? SWITCH_RIGHT_IMG : SWITCH_LEFT_IMG;
+  selectorImg.alt = isManual ? 'SS0（手動）' : 'SS0（自動）';
+}
+function renderSelector2(){
+  selectorImg2.src = (ss1Side==='left') ? SWITCH_LEFT_IMG : SWITCH_RIGHT_IMG;
+  selectorImg2.alt = (ss1Side==='left') ? 'SS1（左側）' : 'SS1（右側）';
+}
+
+function toggleSS0(){
+  isManual=!isManual;
+  resetAuto();
+  renderSelector();
+  updateUI();
+}
+function toggleSS1(){
+  ss1Side = (ss1Side==='left') ? 'right' : 'left';
+  resetAuto();      // 回数切替時は自動停止＆初期化
+  renderSelector2();
+  updateUI();
+}
+
+selectorImg.addEventListener('pointerdown', e => { e.preventDefault(); toggleSS0(); });
+selectorImg2.addEventListener('pointerdown', e => { e.preventDefault(); toggleSS1(); });
+
+/* ===== 自動スタート（PB1のみ） =====
+   左行 → LS2で停止 → 2秒待ち → 右行 → LS1で停止（ここで1回カウント）
+   目標回数に達するまで繰り返し、最後は右端で停止。
+*/
+function startAuto(){
+  if(isManual || emergencyStop || autoRunning) return;
+  autoRunning=true;
+  autoPhase='moveLeft';
+  timerActive=false;
+  timerRemaining=0;
+  cyclesDone=0;
+  updateUI();
+}
+
+/* ===== PB処理 ===== */
+function press(which, down){
+  if(emergencyStop) return;
+
+  if(which===1){
+    pb1Pressed = down;
+
+    if(!isManual){
+      if(down) startAuto();     // 自動はPB1で開始
+    }else{
+      if(down) moveMode='left';
+      else if(!pb2Pressed) moveMode=null;
+    }
+  }
+
+  if(which===2){
+    pb2Pressed = down;
+
+    if(isManual){
+      if(down) moveMode='right';
+      else if(!pb1Pressed) moveMode=null;
+    }
+  }
+
+  if(isManual && pb1Pressed && pb2Pressed) moveMode=null;
+
+  updateUI();
+}
+
+pb1El.onpointerdown = () => press(1,true);
+pb1El.onpointerup   = () => press(1,false);
+pb2El.onpointerdown = () => press(2,true);
+pb2El.onpointerup   = () => press(2,false);
+pb4El.onpointerdown = () => releaseEmergency();
+pb5El.onpointerdown = () => engageEmergency();
+
+/* ===== キーボード ===== */
+window.addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  const k=e.key.toLowerCase();
+  if(k==='c') press(1,true);
+  if(k==='v') press(2,true);
+  if(k==='4') releaseEmergency();
+  if(k==='5') engageEmergency();
+  if(k==='x') toggleSS0();
+  if(k==='z') toggleSS1();
+});
+window.addEventListener('keyup', e=>{
+  const k=e.key.toLowerCase();
+  if(k==='c') press(1,false);
+  if(k==='v') press(2,false);
+});
+
+/* ===== ドラッグ ===== */
+function pxToPct(x){
+  const r=panel.getBoundingClientRect();
+  const v=Math.min(r.right, Math.max(r.left, x));
+  return ((v - r.left) / r.width) * 100;
+}
+function setWorkByClientX(x){
+  workLeftPct = clamp(pxToPct(x), minCenter(), maxCenter());
+  placeWork(); updateLS();
+}
+work.onpointerdown = e => { dragging=true; work.setPointerCapture(e.pointerId); setWorkByClientX(e.clientX); };
+work.onpointermove = e => { if(!dragging)return; setWorkByClientX(e.clientX); };
+work.onpointerup   = e => { if(!dragging)return; dragging=false; work.releasePointerCapture(e.pointerId); };
+
+/* ===== 自動状態更新 ===== */
+function updateAutoState(dt){
+  if(!autoRunning || isManual || emergencyStop) return;
+
+  if(timerActive){
+    timerRemaining -= dt;
+    if(timerRemaining <= 0){
+      timerRemaining = 0;
+      timerActive = false;
+    }
+    updateUI();
+  }
+
+  const target = cycleTargetCount();
+
+  switch(autoPhase){
+    case 'moveLeft':
+      if(lsZoneLeftOn){
+        moveMode=null;
+        autoPhase='waitAtLeft';
+        timerActive=true;
+        timerRemaining=TIMER_SET_SEC;
+        updateUI();
+      }else{
+        moveMode='left';
+      }
+      break;
+
+    case 'waitAtLeft':
+      moveMode=null;
+      if(!timerActive){
+        autoPhase='moveRight';
+      }
+      break;
+
+    case 'moveRight':
+      if(lsZoneRightOn){
+        moveMode=null;
+
+        cyclesDone += 1;     // 右端停止で1回カウント
+        updateUI();
+
+        if(cyclesDone >= target){
+          autoPhase='stopAtRight';
+          autoRunning=false;
+          moveMode=null;
+        }else{
+          autoPhase='moveLeft';
+        }
+      }else{
+        moveMode='right';
+      }
+      break;
+
+    case 'stopAtRight':
+    default:
+      moveMode=null;
+      break;
+  }
+}
+
+/* ===== ループ ===== */
+let lastT=0;
+function loop(t){
+  if(!lastT) lastT=t;
+  const dt=(t-lastT)/1000; lastT=t;
+
+  if(!dragging && !emergencyStop){
+    updateAutoState(dt);
+
+    let dir=0;
+
+    if(!isManual){
+      if(moveMode==='left') dir=-1;
+      if(moveMode==='right') dir=+1;
+
+      if(dir<0){ pl1El.classList.add('on'); pl2El.classList.remove('on'); }
+      else if(dir>0){ pl2El.classList.add('on'); pl1El.classList.remove('on'); }
+      else { pl1El.classList.remove('on'); pl2El.classList.remove('on'); }
+    }else{
+      if(pb1Pressed && !pb2Pressed) dir=-1;
+      if(pb2Pressed && !pb1Pressed) dir=+1;
+    }
+
+    if(dir){
+      workLeftPct = clamp(workLeftPct + dir*speedPctPerSec*dt, minCenter(), maxCenter());
+      placeWork(); updateLS();
+    }else{
+      updateLS();
+    }
+  }else{
+    if(emergencyStop){
+      pl1El.classList.remove('on');
+      pl2El.classList.remove('on');
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* ===== 初期化 ===== */
+renderSelector();
+renderSelector2();
+placeWork();
+updateLS();
+updateUI();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
